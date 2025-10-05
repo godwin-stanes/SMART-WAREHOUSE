@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>📊 Warehouse Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f9fafc; }
+    h1 { text-align: center; margin-bottom: 30px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    canvas { width: 100% !important; height: 300px !important; }
+  </style>
+</head>
+<body>
+
+  <h1>📊 Smart Warehouse Dashboard</h1>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Stock Distribution</h2>
+      <canvas id="pieChart"></canvas>
+    </div>
+    <div class="card">
+      <h2>Top 5 Low Stock Items</h2>
+      <canvas id="barChart"></canvas>
+    </div>
+    <div class="card">
+      <h2>Weekly Stock Movement</h2>
+      <canvas id="lineChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    async function loadDashboard() {
+      const res = await fetch("http://127.0.0.1:5000/dashboard_data");
+      const data = await res.json();
+
+      // Pie Chart (Stock Distribution)
+      new Chart(document.getElementById("pieChart"), {
+        type: "pie",
+        data: {
+          labels: data.stock.map(i => i.name),
+          datasets: [{
+            data: data.stock.map(i => i.quantity),
+            backgroundColor: ["#FF6384","#36A2EB","#FFCE56","#4BC0C0","#9966FF","#FF9F40"]
+          }]
+        }
+      });
+
+      // Bar Chart (Low Stock)
+      new Chart(document.getElementById("barChart"), {
+        type: "bar",
+        data: {
+          labels: data.low_stock.map(i => i.name),
+          datasets: [{
+            label: "Quantity",
+            data: data.low_stock.map(i => i.quantity),
+            backgroundColor: "#36A2EB"
+          }]
+        }
+      });
+
+      // Line Chart (Weekly Movement)
+      new Chart(document.getElementById("lineChart"), {
+        type: "line",
+        data: {
+          labels: data.weekly_movement.map(i => i.day),
+          datasets: [{
+            label: "Items Moved",
+            data: data.weekly_movement.map(i => i.moved),
+            borderColor: "#FF6384",
+            fill: false,
+            tension: 0.3
+          }]
+        }
+      });
+    }
+
+    loadDashboard();
+  </script>
+
+</body>
+</html>

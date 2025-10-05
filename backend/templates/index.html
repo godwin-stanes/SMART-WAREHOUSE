@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<title>Smart Warehouse Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: 'Inter', sans-serif; background: #111827; color: #E5E7EB; transition: all 0.3s; }
+/* Toast */
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; opacity:0; z-index:50; transition: opacity 0.4s; }
+.toast.show { opacity:1; }
+/* Sidebar */
+aside { background:#1f2937; transition: all 0.3s; }
+aside a { display:block; padding:0.75rem 1rem; border-radius:0.5rem; color:#E5E7EB; margin-bottom:0.25rem; transition:0.2s; }
+aside a.active-link { background:#111827; color:#60a5fa; box-shadow:0 0 10px #60a5fa60; }
+aside a:hover { background:#374151; color:#60a5fa; }
+/* Card Neon Glow */
+.card-neon { background:#1f2937; border-radius:1rem; padding:1.5rem; box-shadow:0 0 15px #60a5fa40,0 0 30px #3b82f640; transition:0.3s; }
+.card-neon:hover { box-shadow:0 0 25px #60a5fa80,0 0 50px #3b82f680; transform: translateY(-4px); }
+/* Table */
+table th { background:#111827; color:#60a5fa; }
+table tr:hover { background:#374151; }
+input, select { background:#374151; color:#E5E7EB; border-radius:0.5rem; padding:0.75rem; border:none; }
+button { border:none; border-radius:0.5rem; padding:0.5rem 1rem; cursor:pointer; transition:0.2s; }
+button:hover { filter: brightness(1.2); }
+/* Scrollbar */
+::-webkit-scrollbar { width:8px; }
+::-webkit-scrollbar-thumb { background:#60a5fa; border-radius:4px; }
+::-webkit-scrollbar-track { background:#1f2937; }
+</style>
+</head>
+<body class="flex">
+
+<!-- Sidebar -->
+<aside class="w-64 shadow-lg h-screen p-5 hidden md:block">
+  <h1 class="text-2xl font-bold text-blue-400 mb-10">📦 Smart Warehouse</h1>
+  <nav class="space-y-4">
+    <a href="#" onclick="loadPage('dashboard', this)" class="active-link">Dashboard</a>
+    <a href="#" onclick="loadPage('inventory', this)">Inventory</a>
+    <a href="#" onclick="loadPage('analytics', this)">Analytics</a>
+    <a href="#" onclick="loadPage('settings', this)">Settings</a>
+  </nav>
+</aside>
+
+<!-- Main Content -->
+<main id="content" class="flex-1 p-6 transition-all"></main>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+const API = "http://127.0.0.1:5000"; 
+let stockChart, trendChart;
+
+// ----------------- TOAST -----------------
+function showToast(message,color="#3b82f6"){const t=document.getElementById("toast");t.innerText=message;t.style.background=color;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),3000);}
+
+// ----------------- NAVIGATION -----------------
+function loadPage(page,el){
+document.querySelectorAll("aside nav a").forEach(a=>a.classList.remove("active-link"));
+if(el) el.classList.add("active-link");
+const content=document.getElementById("content");
+
+if(page==="dashboard"){
+content.innerHTML=`
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+<div class="card-neon"><h3 class="text-gray-400">Total Items</h3><p id="totalItems" class="text-2xl font-bold">0</p></div>
+<div class="card-neon"><h3 class="text-gray-400">Low Stock Alerts</h3><p id="lowStock" class="text-2xl font-bold text-red-500">0</p></div>
+<div class="card-neon"><h3 class="text-gray-400">Recently Added</h3><p id="recentAdded" class="text-2xl font-bold text-green-500">0</p></div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<div class="card-neon"><h2 class="text-xl font-semibold mb-4">📊 Stock Distribution</h2><canvas id="stockChart"></canvas></div>
+<div class="card-neon"><h2 class="text-xl font-semibold mb-4">📈 Stock Trends</h2><canvas id="trendChart"></canvas></div>
+</div>`; getItems();
+}
+
+if(page==="inventory"){
+content.innerHTML=`
+<div class="card-neon mb-8"><h2 class="text-xl font-semibold mb-4">➕ Add Item</h2>
+<div class="flex flex-col sm:flex-row gap-4">
+<input type="text" id="name" placeholder="Item Name">
+<input type="text" id="rfid" placeholder="RFID">
+<input type="number" id="quantity" placeholder="Quantity" value="1">
+<button onclick="addItem()" class="bg-blue-600 text-white">Add</button>
+</div></div>
+<div class="card-neon mb-8"><div class="flex justify-between items-center mb-4">
+<h2 class="text-xl font-semibold">📋 Inventory</h2>
+<input type="text" id="search" onkeyup="searchItems()" placeholder="Search items...">
+</div>
+<div class="overflow-x-auto">
+<table class="w-full border-collapse">
+<thead><tr><th class="p-3">ID</th><th class="p-3">Name</th><th class="p-3">RFID</th><th class="p-3">Quantity</th><th class="p-3">Actions</th></tr></thead>
+<tbody id="itemsTable"></tbody></table></div></div>`;
+getItems();
+}
+
+if(page==="analytics"){
+content.innerHTML=`<div class="card-neon"><h2 class="text-xl font-semibold mb-4">📊 Analytics Coming Soon...</h2><p class="text-gray-400">Advanced charts and AI predictions 🚀</p></div>`;
+}
+
+if(page==="settings"){
+content.innerHTML=`<div class="card-neon"><h2 class="text-xl font-semibold mb-4">⚙️ Settings</h2><p class="text-gray-400">User preferences and system config</p></div>`;
+}
+}
+
+// ----------------- CRUD -----------------
+async function addItem(){
+const name=document.getElementById("name").value;
+const rfid=document.getElementById("rfid").value;
+const quantity=document.getElementById("quantity").value;
+if(!name||!rfid||!quantity){showToast("All fields required!","#f87171");return;}
+const res=await fetch(API+"/add_item",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,rfid,quantity})});
+const data=await res.json(); showToast(data.message,"#16a34a"); getItems();
+}
+
+async function getItems(){
+const res=await fetch(API+"/items");
+const items=await res.json();
+const table=document.getElementById("itemsTable");
+if(table){ table.innerHTML=""; items.forEach(item=>{table.innerHTML+=`<tr class="hover:bg-gray-700 border-b"><td class="p-3">${item.id}</td><td class="p-3">${item.name}</td><td class="p-3">${item.rfid}</td><td class="p-3">${item.quantity}</td><td class="p-3"><button onclick="updateItem(${item.id})" class="text-blue-400 hover:underline">Update</button> <button onclick="deleteItem(${item.id})" class="text-red-400 hover:underline">Delete</button></td></tr>`;});}
+if(document.getElementById("totalItems")){
+let total=items.reduce((sum,i)=>sum+i.quantity,0);
+let lowStock=items.filter(i=>i.quantity<5).length;
+document.getElementById("totalItems").innerText=total;
+document.getElementById("lowStock").innerText=lowStock;
+document.getElementById("recentAdded").innerText=items.length;
+updateCharts(items);
+}
+}
+
+async function updateItem(id){
+const newQty=prompt("Enter new quantity:"); if(!newQty) return;
+await fetch(API+"/update_item/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({quantity:newQty})});
+showToast("Item updated!","#60a5fa"); getItems();
+}
+
+async function deleteItem(id){
+await fetch(API+"/delete_item/"+id,{method:"DELETE"}); showToast("Item deleted!","#f87171"); getItems();
+}
+
+function searchItems(){
+const search=document.getElementById("search").value.toLowerCase();
+document.querySelectorAll("#itemsTable tr").forEach(row=>{
+const name=row.children[1].innerText.toLowerCase();
+row.style.display=name.includes(search)?"":"none";
+});
+}
+
+// ----------------- CHARTS -----------------
+function updateCharts(items){
+const labels=items.map(i=>i.name);
+const data=items.map(i=>i.quantity);
+const textColor="#E5E7EB";
+const neonColors=["#3b82f6","#10b981","#facc15","#f87171","#8b5cf6"];
+if(stockChart) stockChart.destroy();
+if(trendChart) trendChart.destroy();
+stockChart=new Chart(document.getElementById("stockChart"),{
+type:"doughnut",
+data:{labels,datasets:[{data,backgroundColor:neonColors,borderWidth:3,borderColor:'#000'}]},
+options:{plugins:{legend:{position:"bottom",labels:{color:textColor}}},animation:{animateRotate:true,animateScale:true}}
+});
+trendChart=new Chart(document.getElementById("trendChart"),{
+type:"line",
+data:{labels,datasets:[{label:"Stock",data,borderColor:"#60a5fa",backgroundColor:"rgba(96,165,250,0.2)",borderWidth:3,pointBackgroundColor:"#60a5fa",pointHoverRadius:8,pointHoverBackgroundColor:"#3b82f6",tension:0.3}]},
+options:{responsive:true,scales:{x:{ticks:{color:textColor}},y:{ticks:{color:textColor}}}}
+});
+}
+
+// ----------------- INIT -----------------
+loadPage("dashboard",document.querySelector("aside nav a"));
+</script>
+</body>
+</html>
